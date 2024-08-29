@@ -7,7 +7,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define paths
-base_path = r'C:\Users\Administrator\Desktop\Unshipped Order'
+base_path = r'/home/container/'
 upload_path = os.path.join(base_path, 'Upload')
 output_path = os.path.join(base_path, 'Output')
 
