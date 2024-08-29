@@ -12,16 +12,31 @@ upload_path = os.path.join(base_path, 'Upload')
 output_path = os.path.join(base_path, 'Output')
 
 master_sheet_path = os.path.join(upload_path, '3rd-Party-Orders-Mastersheet.xlsx')
-unshipped_orders_path = os.path.join(upload_path, 'Unshipped-Orders.xlsx')
 
-# Read the Master sheet
+# Load the Master sheet
 logging.info("Loading master sheet...")
-master_sheet = pd.ExcelFile(master_sheet_path)
-
-# Read the Unshipped Orders file
 try:
-    logging.info("Loading unshipped orders...")
-    unshipped_orders = pd.read_excel(unshipped_orders_path)
+    master_sheet = pd.ExcelFile(master_sheet_path)
+except FileNotFoundError as e:
+    logging.error(f"Error: {e}")
+    exit()
+
+# Find the latest .txt file in the Upload directory
+logging.info("Searching for a .txt file in the Upload folder...")
+txt_files = [f for f in os.listdir(upload_path) if f.endswith('.txt')]
+
+if not txt_files:
+    logging.error("Error: No .txt file found in the Upload folder.")
+    exit()
+
+# Use the first found .txt file (or customize this to select the latest/required one)
+unshipped_orders_path = os.path.join(upload_path, txt_files[0])
+logging.info(f"Found .txt file: {txt_files[0]}")
+
+# Read the Unshipped Orders TSV file
+try:
+    logging.info("Loading unshipped orders TSV file...")
+    unshipped_orders = pd.read_csv(unshipped_orders_path, delimiter='\t')
 except FileNotFoundError as e:
     logging.error(f"Error: {e}")
     exit()
