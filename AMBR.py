@@ -2,6 +2,7 @@ import os
 import pandas as pd
 from tqdm import tqdm
 import logging
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,7 +30,7 @@ if not txt_files:
     logging.error("Error: No .txt file found in the Upload folder.")
     exit()
 
-# Use the first found .txt file (or customize this to select the latest/required one)
+# Use the first found .txt file
 unshipped_orders_path = os.path.join(upload_path, txt_files[0])
 logging.info(f"Found .txt file: {txt_files[0]}")
 
@@ -64,8 +65,8 @@ if 'sku' in unshipped_orders.columns:
 # Extract vendor names from SKUs
 unshipped_orders['vendor_name'] = unshipped_orders['sku'].apply(lambda x: x.split('-')[0])
 
-# Initialize a list to collect unprocessed orders
-unprocessed_orders = []
+# Initialize a DataFrame to collect unprocessed orders
+unprocessed_orders_df = pd.DataFrame(columns=unshipped_orders.columns)
 
 logging.info("Processing each vendor in Unshipped Orders...")
 # Process each vendor in Unshipped Orders
@@ -86,20 +87,28 @@ for vendor_name in tqdm(unshipped_orders['vendor_name'].unique(), desc="Processi
         # Log progress message
         logging.info(f"{vendor_name} Completed: {len(vendor_unshipped_orders) - len(duplicates)} Unprocessed Orders")
     else:
-        unprocessed_orders.extend(unshipped_orders[unshipped_orders['vendor_name'] == vendor_name]['sku'].tolist())
+        # Add full details of unprocessed orders for the vendor
+        unprocessed_orders_df = pd.concat([unprocessed_orders_df, unshipped_orders[unshipped_orders['vendor_name'] == vendor_name]])
 
 # Remove unprocessed SKUs from unshipped_orders
-unshipped_orders = unshipped_orders[~unshipped_orders['sku'].isin(unprocessed_orders)]
+unshipped_orders = unshipped_orders[~unshipped_orders['sku'].isin(unprocessed_orders_df['sku'].tolist())]
 
-# Create a DataFrame for the unprocessed orders report
-unprocessed_orders_df = pd.DataFrame(unprocessed_orders, columns=['SKU'])
+# Drop the specified columns from the cleaned data
+columns_to_remove = [
+    'order-item-id', 'payments-date', 'reporting-date', 'days-past-promise', 'buyer-name', 'cpf',
+     'quantity-shipped', 'ship-service-level', 'is-business-order',
+    'purchase-order-number', 'price-designation', 'verge-of-cancellation', 'verge-of-lateShipment',
+    'signature-confirmation-recommended'
+]
+
+unshipped_orders.drop(columns=columns_to_remove, inplace=True, errors='ignore')
 
 # Generate a report with the count of unshipped orders per SKU
 sku_counts = unshipped_orders['sku'].value_counts().reset_index()
 sku_counts.columns = ['SKU', 'Unshipped Orders']
 
 # Generate a report with the count of unprocessed orders per vendor
-unprocessed_vendor_counts = pd.DataFrame(unprocessed_orders, columns=['SKU'])
+unprocessed_vendor_counts = pd.DataFrame(unprocessed_orders_df['sku'], columns=['SKU'])
 unprocessed_vendor_counts['vendor_name'] = unprocessed_vendor_counts['SKU'].apply(lambda x: x.split('-')[0])
 unprocessed_vendor_counts = unprocessed_vendor_counts['vendor_name'].value_counts().reset_index()
 unprocessed_vendor_counts.columns = ['Vendor', 'Unprocessed Orders']
@@ -128,3 +137,6 @@ for idx, row in unprocessed_vendor_counts.iterrows():
     logging.info(f"{row['Vendor']} - {row['Unprocessed Orders']} Unprocessed Orders")
 
 logging.info("Processing complete. Cleaned Unshipped Orders, Unprocessed Report, SKU Counts Report, and Unshipped Orders Count per Vendor have been saved.")
+
+# Keep the script running for 1 hour (3600 seconds)
+time.sleep(3600)
