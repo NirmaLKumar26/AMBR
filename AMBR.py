@@ -14,6 +14,13 @@ output_path = os.path.join(base_path, 'Output')
 
 master_sheet_path = os.path.join(upload_path, '3rd-Party-Orders-Mastersheet.xlsx')
 
+print("Unshipped Orders Automated By")
+print("███╗░░██╗██╗██████╗░███╗░░░███╗░█████╗░██╗░░░░░\n"
+      "████╗░██║██║██╔══██╗████╗░████║██╔══██╗██║░░░░░\n"
+      "██╔██╗██║██║██████╔╝██╔████╔██║███████║██║░░░░░\n"
+      "██║╚████║██║██╔══██╗██║╚██╔╝██║██╔══██║██║░░░░░\n"
+      "██║░╚███║██║██║░░██║██║░╚═╝░██║██║░░██║███████╗\n"
+      "╚═╝░░╚══╝╚═╝╚═╝░░╚═╝╚═╝░░░░░╚═╝╚═╝░░╚═╝╚══════╝")
 # Load the Master sheet
 logging.info("Loading master sheet...")
 try:
@@ -65,8 +72,9 @@ if 'sku' in unshipped_orders.columns:
 # Extract vendor names from SKUs
 unshipped_orders['vendor_name'] = unshipped_orders['sku'].apply(lambda x: x.split('-')[0])
 
-# Initialize a DataFrame to collect unprocessed orders
+# Initialize a DataFrame to collect unprocessed orders and new SKUs
 unprocessed_orders_df = pd.DataFrame(columns=unshipped_orders.columns)
+new_skus_df = pd.DataFrame(columns=unshipped_orders.columns)
 
 logging.info("Processing each vendor in Unshipped Orders...")
 # Process each vendor in Unshipped Orders
@@ -80,6 +88,12 @@ for vendor_name in tqdm(unshipped_orders['vendor_name'].unique(), desc="Processi
         # Merge with unshipped orders of this vendor
         vendor_unshipped_orders = unshipped_orders[unshipped_orders['vendor_name'] == vendor_name]
         merged_df = vendor_unshipped_orders.merge(vendor_sheet, left_on='order-id', right_on='Order Id', how='left', indicator=True)
+        
+        # Find new SKUs
+        new_skus = merged_df[merged_df['_merge'] == 'left_only']
+        new_skus = new_skus[~new_skus['sku'].isin(vendor_sheet['SKU'])]
+        new_skus_df = pd.concat([new_skus_df, new_skus])
+
         # Rows that exist in both Unshipped Orders and Master sheet
         duplicates = merged_df[merged_df['_merge'] == 'both']
         # Remove these rows from unshipped_orders
@@ -95,7 +109,7 @@ unshipped_orders = unshipped_orders[~unshipped_orders['sku'].isin(unprocessed_or
 
 # Drop the specified columns from the cleaned data
 columns_to_remove = [
-    'order-item-id', 'payments-date', 'reporting-date', 'days-past-promise', 'buyer-name', 'cpf',
+    'order-item-id', 'payments-date', 'reporting-date', 'payment-method-details', 'number-of-items', 'quantity-to-ship','ship-service-name','address-type', 'days-past-promise', 'buyer-name', 'cpf',
      'quantity-shipped', 'ship-service-level', 'is-business-order',
     'purchase-order-number', 'price-designation', 'verge-of-cancellation', 'verge-of-lateShipment',
     'signature-confirmation-recommended'
@@ -117,26 +131,22 @@ unprocessed_vendor_counts.columns = ['Vendor', 'Unprocessed Orders']
 unshipped_vendor_counts = unshipped_orders['vendor_name'].value_counts().reset_index()
 unshipped_vendor_counts.columns = ['Vendor', 'Unshipped Orders']
 
-# Save the cleaned Unshipped Orders, Unprocessed Report, SKU Count Report, and Vendor Unshipped Orders Count
-unshipped_orders_output_path = os.path.join(output_path, 'cleaned_unshipped_orders.xlsx')
-unprocessed_orders_output_path = os.path.join(output_path, 'unprocessed_report.xlsx')
-sku_counts_output_path = os.path.join(output_path, 'sku_counts_report.xlsx')
-unshipped_vendor_counts_output_path = os.path.join(output_path, 'unshipped_vendor_counts.xlsx')
+# Save all reports in one Excel file with different sheets
+combined_output_path = os.path.join(output_path, 'Unshipped_report.xlsx')
+logging.info(f"Saving all reports to {combined_output_path}...")
 
-logging.info(f"Saving cleaned Unshipped Orders to {unshipped_orders_output_path}...")
-unshipped_orders.to_excel(unshipped_orders_output_path, index=False)
-logging.info(f"Saving Unprocessed Report to {unprocessed_orders_output_path}...")
-unprocessed_orders_df.to_excel(unprocessed_orders_output_path, index=False)
-logging.info(f"Saving SKU Counts Report to {sku_counts_output_path}...")
-sku_counts.to_excel(sku_counts_output_path, index=False)
-logging.info(f"Saving Unshipped Orders Count per Vendor to {unshipped_vendor_counts_output_path}...")
-unshipped_vendor_counts.to_excel(unshipped_vendor_counts_output_path, index=False)
+with pd.ExcelWriter(combined_output_path, engine='xlsxwriter') as writer:
+    unshipped_orders.to_excel(writer, sheet_name='Cleaned_Unshipped_Orders', index=False)
+    unprocessed_orders_df.to_excel(writer, sheet_name='Unprocessed_Report', index=False)
+    sku_counts.to_excel(writer, sheet_name='SKU_Counts_Report', index=False)
+    unshipped_vendor_counts.to_excel(writer, sheet_name='Unshipped_Vendor_Counts', index=False)
+    new_skus_df.to_excel(writer, sheet_name='New_SKUs_Report', index=False)
 
 # Log the unprocessed vendor counts
 for idx, row in unprocessed_vendor_counts.iterrows():
     logging.info(f"{row['Vendor']} - {row['Unprocessed Orders']} Unprocessed Orders")
 
-logging.info("Processing complete. Cleaned Unshipped Orders, Unprocessed Report, SKU Counts Report, and Unshipped Orders Count per Vendor have been saved.")
+logging.info("Processing complete. All reports have been saved in a single Excel file with multiple sheets.")
 
 # Keep the script running for 1 hour (3600 seconds)
 time.sleep(3600)
